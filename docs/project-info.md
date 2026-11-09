@@ -34,13 +34,15 @@ Personas que quieren consultar de forma rápida y fiable el valor y la evolució
 
 ## Fuente de datos (ECB) — confirmación previa a implementación
 **Serie objetivo:** Euríbor a 1 año (12 meses), cierre histórico / media de observaciones del periodo.  
-**Identificador propuesto (confirmado):** `FM.M.U2.EUR.RT.MM.EURIBOR1YD_.HSTA`  
-- Dataflow: `FM` (Financial market data).  
-- Dimensiones: frecuencia `M` (mensual), área `U2`, moneda `EUR`, proveedor `RT` (Refinitiv), instrumento `MM`, identificador `EURIBOR1YD_`, tipo `HSTA` (Historical close, average of observations through period).  
-- Unidad: `%` anual (`PCPA`).
+**Identificador completo confirmado:** `FM.M.U2.EUR.RT.MM.EURIBOR1YD_.HSTA` (para referencia). Para construir la petición se separa:
+- **`ECB_DATAFLOW`:** `FM` (Financial market data).
+- **`ECB_SERIES_KEY`:** `M.U2.EUR.RT.MM.EURIBOR1YD_.HSTA` (dimensiones sin el dataflow).
 
-**Endpoint confirmado (API en vivo):**  
-`https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.RT.MM.EURIBOR1YD_.HSTA`
+Dimensiones: frecuencia `M` (mensual), área `U2`, moneda `EUR`, proveedor `RT` (Refinitiv), instrumento `MM`, identificador `EURIBOR1YD_`, tipo `HSTA` (Historical close, average of observations through period). Unidad: `%` anual (`PCPA`).
+
+**Construcción de URL (SDMX REST):**  
+`{ECB_BASE_URL}/service/data/{ECB_DATAFLOW}/{ECB_SERIES_KEY}`  
+Ejemplo confirmado: `https://data-api.ecb.europa.eu/service/data/FM/M.U2.EUR.RT.MM.EURIBOR1YD_.HSTA`
 
 **Formato elegido para el cliente backend:** `format=csvdata` (CSV), por simplicidad de procesamiento en Python. El servicio también soporta `jsondata`; se usará CSV salvo necesidad justificada.
 
@@ -90,28 +92,34 @@ PostgreSQL (db) ← observaciones + metadatos de sincronización
 ## Datos y claves
 Datos: observaciones del Euríbor 12M (periodo mensual, valor, estado) y metadatos de sincronización. No hay datos personales.
 
-Claves/configuración (solo nombres; valores reales en `.env`, nunca en git). Previsión inicial (ajustable al implementar, sin añadir secretos al código):
-- `POSTGRES_DB`
-- `POSTGRES_USER`
-- `POSTGRES_PASSWORD`
-- `POSTGRES_HOST` (p. ej. `db` en Compose)
-- `POSTGRES_PORT`
-- `DATABASE_URL` (o construcción equivalente en backend)
+Claves/configuración (solo nombres; valores reales en `.env`, nunca en git). Previsión inicial (ajustable al implementar, sin añadir secretos al código), evitando redundancias:
+
+**Conexión a base de datos:**
+- `DATABASE_URL` — configuración **principal** de conexión desde FastAPI.
+- `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` — para configurar el servicio PostgreSQL en Docker Compose. FastAPI no necesita duplicar estos valores si usa `DATABASE_URL`.
+
+**ECB (URL construida como `/service/data/{ECB_DATAFLOW}/{ECB_SERIES_KEY}`):**
 - `ECB_BASE_URL` (por defecto `https://data-api.ecb.europa.eu`)
-- `ECB_SERIES_KEY` (por defecto `FM/M.U2.EUR.RT.MM.EURIBOR1YD_.HSTA`)
+- `ECB_DATAFLOW` (por defecto `FM`)
+- `ECB_SERIES_KEY` (por defecto `M.U2.EUR.RT.MM.EURIBOR1YD_.HSTA`)
 - `ECB_FORMAT` (por defecto `csvdata`)
+
+**Aplicación / desarrollo:**
 - `CACHE_TTL_SECONDS` (por defecto `86400`, 24 horas)
 - `VITE_API_PROXY_TARGET` o equivalente para el proxy de Vite hacia FastAPI en desarrollo (nombre concreto a fijar al implementar)
 
 Mantener `.env` fuera de git (`.gitignore`) y crear `.env.example` sin credenciales reales.
 
 ## Cómo se prueba
-Caso concreto (dato real confirmado en la API ECB durante la verificación):
-- Serie: `FM.M.U2.EUR.RT.MM.EURIBOR1YD_.HSTA`, `lastNObservations=1`, `format=csvdata` (o equivalente).
-- Resultado esperado (verificado el 2026-11-09): periodo `2026-10`, valor `3.2385909` (% anual), estado normal.
-- En la UI: se muestra ese valor como último disponible (si está en BD o tras sincronización), un gráfico de evolución mensual con **todo el histórico disponible** (Recharts), y **ambas** fechas/etiquetas: fecha/hora de la última sincronización con el ECB y periodo del último dato publicado.
+**Referencia de verificación manual** (dato real confirmado en la API ECB el 2026-11-09; **no** es un valor fijo obligatorio para pruebas automatizadas):
+- Serie: `ECB_DATAFLOW=FM`, `ECB_SERIES_KEY=M.U2.EUR.RT.MM.EURIBOR1YD_.HSTA`, `lastNObservations=1`, `format=csvdata`.
+- En esa verificación se obtuvo: periodo `2026-10`, valor `3.2385909` (% anual), estado normal. Sirve como ejemplo de estructura/orden de magnitud; el valor real puede cambiar con nuevas publicaciones.
 
-Pruebas previstas (por fases en `PLAN.md`): parseo CSV ECB, `upsert` por periodo sin duplicados, caché vigente evita llamada ECB, caché caducada dispara actualización al cargar, fallo ECB + datos en BD devuelve datos y aviso, fallo ECB sin BD devuelve error controlado, React renderiza último valor/gráfico/aviso/ambas fechas.
+**Pruebas automatizadas (criterio):** deben validar la **estructura y coherencia de los datos reales** (campos presentes, tipos/formatos, periodo mensual válido, valor numérico coherente, estado, fechas de actualización, ausencia de duplicados por periodo, comportamiento de caché/fallback), no depender de un valor numérico histórico fijo.
+
+**Comprobaciones funcionales esperadas en UI:** se muestra el último valor disponible, un gráfico de evolución mensual con **todo el histórico disponible** (Recharts), y **ambas** fechas/etiquetas: fecha/hora de la última sincronización con el ECB y periodo del último dato publicado.
+
+Pruebas previstas (por fases en `PLAN.md`): parseo CSV ECB, `upsert` por periodo sin duplicados, caché vigente evita llamada ECB, caché caducada dispara actualización al cargar, fallo ECB + datos en BD devuelve datos y aviso, fallo ECB sin BD devuelve error controlado, React renderiza último valor/gráfico/aviso/ambas fechas con datos coherentes.
 
 ## Decisiones cerradas
 1. **ECB:** `csvdata`.
