@@ -34,60 +34,63 @@ Disponer de un esqueleto ejecutable con los tres servicios (`frontend`, `backend
 - `.gitignore` (verificar/ajustar: `.env`, artefactos Python/Node, build)
 - `backend/Dockerfile`, `backend/requirements.txt` (o archivo de dependencias equivalente), `backend/app/main.py` (mínimo), `backend/app/__init__.py`, estructura base `backend/app/...`
 - `frontend/Dockerfile`, `frontend/package.json` (generado por scaffold), `frontend/vite.config.*`, `frontend/src/App.*`, `frontend/src/main.*`, `frontend/index.html`, etc. (scaffold Vite + React)
-- `docs/project-info.md` — **no modificar** salvo corrección autorizada.
+- `docs/project-info.md` — **no modificar**.
 - `PLAN.md` — marcar tareas/cierre solo cuando se autorice.
 
 ### Tareas concretas (ordenadas)
-1. Definir estructura de carpetas: `backend/`, `frontend/`, (opcional según decisión) `backend/tests/`, `frontend/src/...`. Mantener separación de responsabilidades.
-2. **Backend (mínimo):** crear app FastAPI con endpoint de salud/comprobación (p. ej. `GET /health` o `/api/health`) que responda JSON simple; sin lógica ECB/BD funcional del dominio.
-3. **Frontend (mínimo):** scaffold React + Vite; pantalla inicial con nombre “Panel de indicadores hipotecarios” y comprobación visual mínima; configurar proxy de Vite hacia FastAPI (desarrollo) para rutas API acordadas.
-4. **PostgreSQL:** servicio `db` en Compose con imagen oficial, volumen para datos, variables `POSTGRES_DB/POSTGRES_USER/POSTGRES_PASSWORD` desde `.env`.
+1. Definir estructura de carpetas: `backend/`, `frontend/`, `backend/tests/`, `frontend/src/...` (y estructura de tests frontend según Vitest). Mantener separación de responsabilidades.
+2. **Backend (mínimo):** crear app FastAPI con endpoint de salud `GET /api/health` que responda JSON simple; sin lógica ECB/BD funcional del dominio.
+3. **Frontend (mínimo):** scaffold React + Vite; pantalla inicial con nombre “Panel de indicadores hipotecarios” y comprobación visual mínima; configurar proxy de Vite hacia FastAPI para el prefijo `/api/`.
+4. **PostgreSQL:** servicio `db` en Compose con imagen oficial, **volumen persistente** para datos, variables `POSTGRES_DB/POSTGRES_USER/POSTGRES_PASSWORD` desde `.env`.
 5. **Dockerfiles:** uno para `backend` (Python, instala dependencias, ejecuta servidor dev) y otro para `frontend` (Node, instala dependencias, ejecuta Vite en modo dev accesible desde host). Mantener simples.
 6. **docker-compose.yml:** servicios `frontend`, `backend`, `db`; red interna; `backend` accesible para proxy/frontend; `db` accesible para `backend`; puertos expuestos solo los necesarios para desarrollo; dependencias de arranque razonables (`depends_on`; healthcheck de `db` si se decide).
 7. **Variables de entorno:** actualizar `.env.example` con nombres aprobados (`DATABASE_URL`, `POSTGRES_*`, `ECB_*`, `CACHE_TTL_SECONDS`, proxy Vite) sin valores reales. Documentar brevemente en comentarios si ayuda.
-8. **Comprobación:** arrancar Compose; verificar que `db` acepta conexiones, `backend` responde al endpoint de salud, `frontend` carga y muestra el nombre; verificar comunicación frontend→backend vía proxy (petición de comprobación).
-9. **Pruebas mínimas de fase:** añadir al menos una prueba automática simple (backend: endpoint de salud; y/o frontend: renderiza nombre) según decisiones de tooling, ejecutable en contenedor o localmente.
+8. **Comprobación explícita:** arrancar Compose; verificar que `db` acepta conexiones, `backend` responde a `GET /api/health`, `frontend` carga y muestra el nombre; **comprobar explícitamente la comunicación React/Vite → proxy `/api/health` → FastAPI** (petición desde el navegador/pantalla o mecanismo equivalente que atraviese el proxy).
+9. **Pruebas mínimas de fase:** añadir pruebas automáticas simples: backend (endpoint `/api/health`, respuesta 200 y JSON esperado) con `pytest`; frontend (renderiza “Panel de indicadores hipotecarios”) con **Vitest + React Testing Library**. Ejecutables en contenedor o localmente según configuración.
 
 ### Dependencias necesarias y justificación
-> **No instalar ahora.** Antes de cada instalación: confirmar nombre, versión/compatibilidad y existencia.
+> **No instalar ahora.** Antes de cada instalación: confirmar nombre, versión/compatibilidad y existencia. No introducir dependencias adicionales sin justificarlas.
 
 | Área | Dependencia (prevista) | Para qué | Justificación |
 |---|---|---|---|
 | Backend | `fastapi` | Framework API | Requisito aprobado. |
 | Backend | `uvicorn[standard]` o `uvicorn` | Servidor ASGI en desarrollo | Ejecutar FastAPI. |
-| Backend | Cliente HTTP (`httpx` u alternativa) | Llamadas ECB en Fase 2 | Necesario para consumir API externa; se puede añadir en Fase 2 si se prefiere minimizar Fase 0. |
-| Backend | Driver PostgreSQL (`psycopg`/`psycopg[binary]` o equivalente) | Conexión a PostgreSQL en Fase 1 | Acceso a BD; puede diferirse a Fase 1. |
-| Backend | `pytest` (+ `pytest-cov` opcional) | Pruebas backend | Cumplir norma “todo va probado”. |
+| Backend | `httpx` | Cliente HTTP ECB | Aprobado; se incorpora en la **Fase 2** (no antes, salvo necesidad justificada). |
+| Backend | `psycopg` v3 (`psycopg[binary]` o variante aprobada) | Conexión PostgreSQL | Aprobado; acceso **síncrono** inicial con SQL directo, sin SQLAlchemy. Se incorpora en la **Fase 1**. |
+| Backend | `pytest` (+ plugins mínimos si hacen falta) | Pruebas backend | Norma “todo va probado”. |
 | Frontend | React, React DOM, Vite, plugin React (scaffold) | SPA y dev server | Requisitos aprobados. |
-| Frontend | `recharts` | Gráfico (Fase 3) | Aprobado; puede diferirse a Fase 3. |
-| Frontend | Framework de pruebas (Vitest + Testing Library, o decisión aprobada) | Pruebas frontend | “Todo va probado”; **decisión pendiente** (ver abajo). |
-| Infra | Imágenes Docker oficiales `python`, `node`, `postgres` | Contenedores | Requisito Docker Compose. |
+| Frontend | `recharts` | Gráfico | Aprobado; se incorpora en la **Fase 3**. |
+| Frontend | `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, `jsdom` (o equivalentes mínimos) | Pruebas frontend | **Decisión cerrada:** Vitest + React Testing Library. |
+| Infra | Imágenes Docker oficiales `python`, `node`, `postgres` | Contenedores | Requisito Docker Compose. PostgreSQL con **volumen persistente**. |
 
 ### Pruebas que deben ejecutarse
-- Backend: prueba automática del endpoint de salud (respuesta 200 y estructura JSON esperada).
-- Frontend: prueba automática que la pantalla muestra “Panel de indicadores hipotecarios” (o texto acordado).
-- Integración manual guiada: servicios arriba, puertos accesibles, proxy funciona.
+- Backend: prueba automática de `GET /api/health` (respuesta 200 y estructura JSON esperada).
+- Frontend: prueba automática (Vitest + RTL) que la pantalla muestra “Panel de indicadores hipotecarios”.
+- Integración manual guiada: servicios arriba, puertos accesibles.
+- **Comprobación explícita:** comunicación **React/Vite → proxy `/api/health` → FastAPI** (la petición debe atravesar el proxy de Vite).
 - Comandos previstos (ajustar a nombres reales de scripts/servicios):
   - `docker compose config`
   - `docker compose up --build -d`
   - `docker compose ps`
   - `docker compose logs --tail=50 backend frontend db`
-  - `curl -fsS http://localhost:<puerto-backend>/health` (o ruta acordada)
+  - `curl -fsS http://localhost:<puerto-backend>/api/health`
   - `curl -fsS http://localhost:<puerto-frontend>/`
-  - Pruebas backend/frontend según tooling elegido (p. ej. `docker compose exec backend pytest`, `docker compose exec frontend npm test -- --run`).
+  - `docker compose exec backend pytest -q` (o equivalente)
+  - `docker compose exec frontend npm test -- --run` (o script Vitest equivalente)
 
 ### Criterios de aceptación
 - `docker compose up --build` levanta `frontend`, `backend` y `db` sin errores de arranque.
-- El endpoint de salud del backend responde correctamente.
+- `GET /api/health` responde correctamente desde FastAPI.
 - El frontend carga y muestra el nombre de la app.
-- React se comunica con FastAPI a través del proxy en desarrollo (comprobación mínima).
+- Se verifica explícitamente la comunicación React/Vite → proxy `/api/health` → FastAPI.
+- PostgreSQL usa volumen persistente.
 - `.env.example` existe, sin secretos; `.env` no está versionado.
-- No hay funcionalidad ECB/Euríbor implementada más allá de placeholders no funcionales si fueran necesarios (evitar).
+- No hay funcionalidad ECB/Euríbor implementada.
 
 ### Condiciones antes de comenzar la Fase 1
 - Fase 0 aceptada/revisada por el usuario.
 - Estructura y Compose estables.
-- Decisiones técnicas marcadas como necesarias para Fase 1 resueltas (si aplica).
+- Autorización expresa del usuario para iniciar la Fase 1.
 
 ---
 
@@ -97,34 +100,32 @@ Disponer de un esqueleto ejecutable con los tres servicios (`frontend`, `backend
 Persistir observaciones mensuales y metadatos de sincronización en PostgreSQL, con acceso desde FastAPI usando `DATABASE_URL`, clave única por periodo mensual, operaciones de inserción/actualización/consulta sin duplicados y endpoint interno de consulta, todo probado.
 
 ### Archivos que previsiblemente se crearán o modificarán
-- `backend/app/db/*` (conexión/engine/sesión; nombres concretos según enfoque aprobado)
-- `backend/app/models/*` o esquema equivalente (observaciones, metadatos de sincronización)
-- `backend/app/repositories/*` o `backend/app/services/storage*` (operaciones BD)
-- `backend/app/api/*` o rutas (endpoint interno de consulta de datos almacenados)
+- `backend/app/db/*` (conexión con `psycopg` v3, ejecución SQL; nombres concretos al implementar)
+- `backend/app/repositories/*` o `backend/app/services/storage*` (operaciones BD, SQL directo)
+- `backend/app/api/*` o rutas (endpoint interno bajo `/api/` para consultar datos almacenados)
 - `backend/app/core/config*` (lectura `DATABASE_URL`, etc.)
-- `backend/requirements.txt` (añadir driver/ORM si se aprueba)
-- Scripts/migraciones de esquema (`backend/sql/*` o herramienta elegida) — **decisión pendiente**.
+- `backend/sql/init.sql` (o script equivalente **idempotente**) para inicialización de esquema
+- `backend/requirements.txt` (añadir `psycopg` v3 si no está)
 - `backend/tests/*` (conexión, persistencia, consulta, ausencia de duplicados)
 - `docker-compose.yml` / `backend/Dockerfile` (si hace falta inicialización o dependencias)
 
 ### Tareas concretas (ordenadas)
 1. Diseñar esquema mínimo aprobado por alcance:
-   - **Observaciones mensuales:** periodo (`TIME_PERIOD`/`YYYY-MM` normalizado) como identificador único, valor numérico, estado/flags relevantes (p. ej. `OBS_STATUS`/`OBS_CONF` si se guardan), marcas temporales técnicas si se decide.
+   - **Observaciones mensuales:** periodo (`TIME_PERIOD`/`YYYY-MM` normalizado) como identificador único, valor numérico, estado/flags relevantes (p. ej. `OBS_STATUS`/`OBS_CONF` si se guardan), marcas temporales técnicas mínimas si se decide.
    - **Metadatos de sincronización:** última sincronización correcta con ECB (fecha/hora), y campos mínimos necesarios para TTL/fallback/visualización (evitar sobre-diseño).
-2. Implementar inicialización de esquema (migración/SQL al arranque o script explícito) — enfoque a decidir.
-3. Implementar conexión FastAPI ↔ PostgreSQL usando **`DATABASE_URL`** como configuración principal.
+2. Implementar inicialización de esquema con **script SQL idempotente** (sin Alembic inicialmente). Definir cuándo/cómo se ejecuta (arranque controlado o mecanismo explícito) sin duplicar lógica.
+3. Implementar conexión FastAPI ↔ PostgreSQL usando **`DATABASE_URL`** con **`psycopg` v3** y **acceso síncrono** inicial (implementación sencilla). SQL directo, **sin SQLAlchemy**.
 4. Implementar operaciones: insertar/actualizar observaciones con **upsert por periodo mensual** (sin duplicados), consultar histórico, consultar último valor almacenado, leer/escribir metadatos de sincronización.
-5. Exponer endpoint interno (bajo prefijo API acordado) para consultar datos almacenados (p. ej. listado/último/estado), solo para verificación interna de fase; no es el contrato final de UI si se refina en Fase 3, pero debe ser coherente.
+5. Exponer endpoint interno bajo prefijo `/api/` (respuesta JSON) para consultar datos almacenados (p. ej. listado/último/estado), solo para verificación interna de fase; no es el contrato final de UI si se refina antes de Fase 3.
 6. Añadir pruebas: conexión, inserción, upsert sin duplicados, consulta histórico/último, metadatos.
 
 ### Dependencias necesarias y justificación
-> No instalar ahora. Confirmar existencia antes de instalar.
+> No instalar ahora. Confirmar existencia antes de instalar. No añadir dependencias adicionales sin justificarlas.
 
 | Dependencia (prevista) | Para qué | Justificación |
 |---|---|---|
-| Driver PostgreSQL (`psycopg` v3 recomendado habitualmente, o alternativa aprobada) | Ejecutar SQL/conexión | Requisito PostgreSQL. |
-| ORM/migraciones (`SQLAlchemy`/`Alembic`) **opcional** | Modelado/migraciones | Puede simplificar, pero añade peso; **decidir** frente a SQL directo + scripts simples. |
-| `pytest`, utilidades de test async/fixtures si hacen falta | Pruebas | Norma de pruebas. |
+| `psycopg` v3 (`psycopg[binary]` o variante aprobada) | Acceso PostgreSQL con SQL directo | **Decisión cerrada:** sin SQLAlchemy; acceso síncrono inicial para simplicidad. |
+| `pytest` (+ plugins mínimos si hacen falta) | Pruebas | Norma de pruebas. |
 
 ### Pruebas que deben ejecutarse
 - Conexión a BD usando `DATABASE_URL` (en entorno Compose/test).
@@ -138,15 +139,16 @@ Persistir observaciones mensuales y metadatos de sincronización en PostgreSQL, 
   - Verificación manual del endpoint interno: `curl -fsS http://localhost:<backend>/api/...`
 
 ### Criterios de aceptación
-- FastAPI conecta a PostgreSQL con `DATABASE_URL`.
+- FastAPI conecta a PostgreSQL con `DATABASE_URL` usando `psycopg` v3 (acceso síncrono inicial).
+- Esquema inicializado mediante script SQL idempotente; sin Alembic/SQLAlchemy.
 - Existe clave/constraint única por periodo mensual; upserts repetidos no crean duplicados.
-- Se pueden consultar observaciones y metadatos almacenados.
+- Se pueden consultar observaciones y metadatos almacenados vía endpoint interno `/api/` (JSON).
 - Pruebas de conexión, persistencia, consulta y ausencia de duplicados pasan.
 
 ### Condiciones antes de comenzar la Fase 2
 - Fase 1 aceptada.
 - Esquema y operaciones BD estables.
-- Decididos: enfoque de esquema/migraciones y cliente HTTP para ECB (si no se añadió antes).
+- Autorización expresa del usuario para iniciar la Fase 2.
 
 ---
 
@@ -177,13 +179,13 @@ Implementar el cliente ECB (CSV) y la lógica de sincronización/caché con TTL 
 10. Pruebas de todos los escenarios (con mocks/stubs del cliente ECB; no depender de red en tests unitarios).
 
 ### Dependencias necesarias y justificación
-> No instalar ahora.
+> No instalar ahora. Confirmar existencia antes de instalar.
 
 | Dependencia (prevista) | Para qué | Justificación |
 |---|---|---|
-| `httpx` (o `requests`, decisión) | HTTP al ECB | Consumo API externa. `httpx` encaja bien con ecosistema moderno; elegir una y justificar. |
-| `pytest`, `respx`/mocks (si `httpx`) o equivalente | Mockear HTTP | Pruebas deterministas sin llamar al ECB real. |
-| Librería estándar `csv`/`io` | Parseo CSV | Preferir stdlib si basta (sin dependencia extra). |
+| `httpx` | Cliente HTTP al ECB | **Decisión cerrada:** se incorpora en la **Fase 2**. |
+| `pytest`, utilidades de mock HTTP compatibles con `httpx` (p. ej. `respx`) si hacen falta | Mockear HTTP | Pruebas deterministas sin llamar al ECB real. Solo añadir si se justifica. |
+| Librería estándar `csv`/`io` | Parseo CSV | Preferir stdlib (sin dependencia extra). |
 
 ### Pruebas que deben ejecutarse
 - Parseo CSV válido (estructura ECB confirmada) → observaciones coherentes.
@@ -208,7 +210,8 @@ Implementar el cliente ECB (CSV) y la lógica de sincronización/caché con TTL 
 
 ### Condiciones antes de comenzar la Fase 3
 - Fase 2 aceptada.
-- Contrato de respuesta backend para la UI definido (campos para histórico, último valor, último periodo, última sincronización, aviso/estado) — **documentar/confirmar antes de implementar UI**.
+- Contrato API definido y aprobado: prefijo `/api/`, respuestas JSON, rutas y campos concretos (histórico, último valor, periodo del último dato, última sincronización, aviso/fallback, errores) — **antes de implementar la Fase 3**.
+- Autorización expresa del usuario para iniciar la Fase 3.
 
 ---
 
@@ -242,12 +245,12 @@ Construir la interfaz React que consume exclusivamente FastAPI, muestra último 
 6. Pruebas de componentes/integración frontend (render, estados, aviso, datos básicos con mocks de API).
 
 ### Dependencias necesarias y justificación
-> No instalar ahora.
+> No instalar ahora. Confirmar existencia antes de instalar.
 
 | Dependencia (prevista) | Para qué | Justificación |
 |---|---|---|
 | `recharts` | Gráfico | Aprobado en `docs/project-info.md`. |
-| `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, `jsdom` (o stack equivalente) | Pruebas UI | Norma de pruebas; **decisión pendiente** si no se fijó en Fase 0. |
+| `vitest`, `@testing-library/react`, `@testing-library/jest-dom`, `jsdom` (o equivalentes mínimos) | Pruebas UI | **Decisión cerrada:** Vitest + React Testing Library. |
 
 ### Pruebas que deben ejecutarse
 - Renderiza nombre/estructura principal.
@@ -272,6 +275,7 @@ Construir la interfaz React que consume exclusivamente FastAPI, muestra último 
 ### Condiciones antes de comenzar la Fase 4
 - Fase 3 aceptada.
 - Flujo completo usuario visible en entorno Compose.
+- Autorización expresa del usuario para iniciar la Fase 4.
 
 ---
 
@@ -283,9 +287,10 @@ Validar el sistema completo en Docker Compose (carga inicial, persistencia, cach
 ### Archivos que previsiblemente se crearán o modificarán
 - `README.md` (cómo ejecutar proyecto, tests, variables de entorno)
 - `backend/tests/*`, `frontend/*` (ajustes de cobertura/estabilidad)
-- `e2e/*` (solo si se aprueba/añade Playwright E2E real en esta fase)
+- `e2e/*` — solo si más adelante aparece una necesidad justificada y aprobada (Playwright **no** se incorpora inicialmente).
 - `docker-compose.yml`, Dockerfiles (ajustes menores si son necesarios para pruebas/ejecución; sin rediseño)
-- `docs/project-info.md` / `PLAN.md` — solo actualizaciones coherentes si se detecta desviación autorizada (normalmente `PLAN.md` al cerrar).
+- `docs/project-info.md` — **no modificar** salvo corrección autorizada.
+- `PLAN.md` — actualizar al cerrar fases cuando se autorice.
 
 ### Tareas concretas (ordenadas)
 1. Verificar arranque conjunto: `docker compose up --build` con `frontend`, `backend`, `db`.
@@ -296,29 +301,27 @@ Validar el sistema completo en Docker Compose (carga inicial, persistencia, cach
 6. Simular **fallo ECB** (mock en tests; y/o bloqueo controlado en entorno local si se diseña) y comprobar fallback a PostgreSQL con aviso; comprobar caso sin datos → error controlado.
 7. Comprobar **ausencia de duplicados** tras sincronizaciones repetidas.
 8. Verificar UI: datos, gráfico, aviso, carga/error.
-9. Ejecutar todas las pruebas automatizadas backend y frontend (y E2E si aplica).
+9. Ejecutar todas las pruebas automatizadas backend y frontend, más comprobaciones manuales de integración.
 10. Corregir problemas encontrados (con prueba cuando corresponda) y documentar ejecución en `README.md`.
 11. Preparar resumen final de verificación para el usuario.
 
 ### Dependencias necesarias y justificación
-> No instalar ahora.
+> No instalar ahora. **Playwright no se incorpora inicialmente.** Solo se propondrá si aparece una necesidad justificada y se aprueba expresamente.
 
 | Dependencia (prevista) | Para qué | Justificación |
 |---|---|---|
-| Playwright (`@playwright/test`) | E2E real navegador | Útil en Fase 4; **decisión pendiente** (coste/configuración). Alternativa: E2E manual documentado + pruebas integración frontend/backend. |
+| *(ninguna adicional prevista)* | — | Cobertura con `pytest` + Vitest/RTL + comprobaciones manuales de integración. |
 
 ### Pruebas que deben ejecutarse
-- Suite backend completa.
-- Suite frontend completa.
-- E2E (si se adopta) o checklist manual reproducible documentado.
-- Verificaciones de integración con Compose (arranque, reinicio, persistencia, caché, fallback).
+- Suite backend completa (`pytest`).
+- Suite frontend completa (Vitest + RTL).
+- Checklist manual reproducible de integración (Compose, carga inicial, persistencia, caché, fallback, duplicados, UI).
 - Comandos previstos:
   - `docker compose up --build -d`
   - `docker compose ps`
   - `docker compose exec backend pytest -q`
   - `docker compose exec frontend npm test -- --run`
   - `docker compose restart backend frontend` / `docker compose down && docker compose up -d` (según prueba)
-  - `npx playwright test` (solo si se añade Playwright y se autoriza su configuración)
 
 ### Criterios de aceptación
 - Los tres servicios funcionan juntos en Docker Compose.
@@ -335,17 +338,25 @@ Validar el sistema completo en Docker Compose (carga inicial, persistencia, cach
 
 ---
 
-## Decisiones técnicas pendientes de aprobación (antes de implementar la fase correspondiente)
+## Decisiones técnicas cerradas
 
-1. **Stack de pruebas frontend (Fase 0/3):** ¿Vitest + React Testing Library (habitual con Vite) u otra opción? Definir scripts (`npm test`) y configuración.
-2. **Cliente HTTP backend (Fase 2, o Fase 0 si se adelanta):** `httpx` vs `requests`. Recomendación técnica habitual: `httpx` (API moderna, buen soporte async/mocks), pero requiere aprobación.
-3. **Acceso a BD (Fase 1):** SQL directo + scripts/SQL init vs SQLAlchemy (+ Alembic). La especificación pide “diseñar estructura/implementar conexión/modelo/operaciones”; no fija ORM. **Recomendación para simplicidad:** SQL claro con driver `psycopg` y esquema controlado, evitando ORM pesado salvo necesidad.
-4. **Inicialización de esquema (Fase 1):** SQL en arranque controlado, script idempotente, o migraciones. Definir para no duplicar lógica.
-5. **Contrato API backend↔frontend (antes de Fase 3):** rutas exactas, forma de respuesta (campos: `latest`, `observations`, `last_sync_at`, `last_data_period`, `warning/source`, etc.), códigos de error. Debe respetar requisitos funcionales sin añadir features.
-6. **E2E con Playwright (Fase 4):** ¿se configura Playwright completo en este proyecto o se valida con pruebas de integración + checklist manual? `e2e/` existe pero está vacío.
-7. **Modo sync/async en FastAPI para BD (Fase 1/2):** coherente con driver elegido (`psycopg` async o sync). Decisión de implementación a fijar al diseñar Fase 1.
+1. **Pruebas frontend:** Vitest + React Testing Library (Fase 0/3).
+2. **Cliente HTTP para ECB:** `httpx`, incorporado en la **Fase 2**.
+3. **Acceso a PostgreSQL:** SQL directo con `psycopg` v3, **sin SQLAlchemy**.
+4. **Inicialización de esquema:** **script SQL idempotente**, evitando Alembic inicialmente.
+5. **Contrato API:** prefijo `/api/`, respuestas JSON. Rutas y campos concretos se definen y aprueban **antes de implementar la Fase 3**.
+6. **Playwright:** **no se incorpora inicialmente**. Se usan pruebas automatizadas de backend/frontend y comprobaciones manuales de integración. Solo se propondrá Playwright si aparece una necesidad justificada y aprobada.
+7. **FastAPI + PostgreSQL:** acceso **síncrono** inicial con `psycopg` v3 para mantener una implementación sencilla.
+
+## Condiciones transversales reflejadas en el plan
+- En la Fase 0 se comprueba explícitamente **React/Vite → proxy `/api/health` → FastAPI**.
+- PostgreSQL usa **volumen persistente**.
+- Se mantienen las normas de `AGENTS.md`.
+- No se introducen dependencias adicionales sin justificarlas.
+- `docs/project-info.md` no se modifica.
 
 ## Resumen operativo
 - **Trabajo:** fase por fase, probar y revisar antes de continuar.
-- **Autorización actual:** solo creación/actualización de `PLAN.md` (cumplida). Siguiente paso requiere instrucción explícita del usuario (p. ej. aprobar plan e iniciar Fase 0).
+- **Autorización actual:** solo actualización de `PLAN.md` (cumplida). **Todavía no hay autorización para iniciar la Fase 0.**
+- **Siguiente paso:** esperar autorización expresa del usuario para comenzar la implementación de la Fase 0.
 - **Commits/push:** locales solo cuando se autorice; **nunca push**.
